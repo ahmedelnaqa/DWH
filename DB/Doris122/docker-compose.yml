@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+  doris_fe:
+    image: apache/doris:1.2.2-fe-x86_64
+    container_name: doris_fe
+    hostname: doris_fe
+    environment:
+      - FE_SERVERS=fe1:172.28.0.2:9010
+      - FE_ID=1
+      - PRIORITY_NETWORKS=172.28.0.0/16
+    ports:
+      - "8030:8030"
+      - "9030:9030"
+      - "9010:9010"
+    volumes:
+      - doris_fe_meta:/opt/apache-doris/fe
+    networks:
+      doris_net:
+        ipv4_address: 172.28.0.2
+    restart: unless-stopped
+
+  doris_be:
+    image: apache/doris:1.2.2-be-x86_64-noavx2
+    container_name: doris_be
+    hostname: doris_be
+    depends_on:
+      - doris_fe
+    environment:
+      - FE_SERVERS=fe1:172.28.0.2:9010
+      - BE_ADDR=172.28.0.3:9050
+      - PRIORITY_NETWORKS=172.28.0.0/16
+    ports:
+      - "8040:8040"
+      - "9050:9050"
+    volumes:
+      - doris_be_data:/opt/apache-doris/be
+    networks:
+      doris_net:
+        ipv4_address: 172.28.0.3
+    restart: unless-stopped
+
+    # run bash -c with a clean command (array form prevents YAML quoting issues)
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >
+        echo 'Waiting for FE to be ready.' &&
+        sleep 15 &&
+        /opt/apache-doris/be/bin/start_be.sh &&
+        tail -f /opt/apache-doris/be/log/be.out
+
+volumes:
+  doris_fe_meta:
+  doris_be_data:
+
+networks:
+  doris_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
