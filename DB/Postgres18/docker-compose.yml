@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:18 # Note: Postgres 18 is not yet released as a stable image
+    container_name: postgres_learning
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: learner
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: learning_db
+    ports:
+      - "5400:5432"  # Primary access via host port 5400
+      - "8199:5432"  # Secondary access via host port 8199
+    volumes:
+      - postgres_data:/var/lib/postgresql # Added /data suffix for standard persistence
+    networks:
+      - pg_network
+
+volumes:
+  postgres_data:
+
+networks:
+  pg_network:
+    driver: bridge
