@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  spark-master:
+    image: apache/spark:3.5.0-scala2.12-java11-python3-ubuntu
+    container_name: spark-master
+    hostname: spark-master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    environment:
+      - SPARK_HOME=/opt/spark
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_EXTRA_CLASSPATH=/jars/*
+    volumes:
+      - ./jars:/jars:ro
+      - ./scripts:/opt/spark/scripts
+      - ./logs:/opt/spark/logs
+    networks:
+      - spark-doris-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    working_dir: /opt/spark
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.master.Master
+      --host spark-master
+      --port 7077
+      --webui-port 8080
+
+  spark-worker:
+    image: apache/spark:3.5.0-scala2.12-java11-python3-ubuntu
+    container_name: spark-worker
+    hostname: spark-worker
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_HOME=/opt/spark
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_HOST=spark-worker
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_WEBUI_PORT=8081
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_EXTRA_CLASSPATH=/jars/*
+    volumes:
+      - ./jars:/jars:ro
+      - ./scripts:/opt/spark/scripts
+      - ./logs:/opt/spark/logs
+    networks:
+      - spark-doris-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    working_dir: /opt/spark
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+      --host spark-worker
+      --webui-port 8081
+
+  jupyter:
+    image: quay.io/jupyter/pyspark-notebook:x86_64-spark-3.5.0
+    container_name: jupyter-lab
+    ports:
+      - "8888:8888"
+      - "4041:4040"
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - GRANT_SUDO=yes
+      - CHOWN_HOME=yes
+      # 🔑 Connect to external Spark cluster + load JARs
+      #- PYSPARK_SUBMIT_ARGS=--jars /jars/spark-doris-connector-spark-3.5-25.2.0.jar,/jars/jt400-21.0.6.jar,/jars/postgresql-42.7.2.jar --master spark://spark-master:7077 pyspark-shell
+
+    # ✅ Include ALL required JARs (comma-separated, NO spaces)
+      - PYSPARK_SUBMIT_ARGS=--jars /jars/iceberg-spark-runtime-3.5_2.12-1.5.0.jar,/jars/nessie-spark-extensions-3.5_2.12-0.104.5.jar,/jars/hadoop-aws-3.3.4.jar,/jars/aws-java-sdk-bundle-1.12.262.jar,/jars/postgresql-42.7.2.jar,/jars/spark-doris-connector-spark-3.5-25.2.0.jar,/jars/jt400-21.0.6.jar --master spark://spark-master:7077 pyspark-shell
+    volumes:
+      - ./jars:/jars:ro
+      - ./notebooks:/home/jovyan/work
+      - ./scripts:/home/jovyan/scripts
+      # 🔑 MOUNT .env FILE so Python can read it at runtime
+      - ./.env:/home/jovyan/.env:ro
+    # 🔑 USE env_file TO PASS VARS TO CONTAINER PROCESS
+    env_file:
+      - .env
+    networks:
+      - spark-doris-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''
+
+networks:
+  spark-doris-net:
+    driver: bridge
