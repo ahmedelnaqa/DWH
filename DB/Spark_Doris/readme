@@ -1,1 +1,12 @@
 Full Docker compose file
+Note:
+1- Create these folders in the root (config, jars, logs)
+2- In the jars folder, add these jars:
+  aws-java-sdk-bundle-1.12.262.jar
+  hadoop-aws-3.3.4.jar
+  iceberg-spark-runtime-3.5_2.12-1.5.0.jar
+  jcc-11.5.9.0.jar
+  jt400-21.0.6.jar
+  nessie-spark-extensions-3.5_2.12-0.104.5.jar
+  postgresql-42.7.2.jar
+  spark-doris-connector-spark-3.5-25.2.0.jar
