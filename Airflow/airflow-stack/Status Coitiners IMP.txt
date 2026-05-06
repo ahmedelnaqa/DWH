@@ -1,0 +1,157 @@
+Airflow:
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/airflow-stack
+$ docker exec airflow-stack-airflow-worker-1 spark-submit --version | grep version
+WARNING: Using incubator modules: jdk.incubator.vector
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /___/ .__/\_,_/_/ /_/\_\   version 4.1.0
+      /_/
+
+Using Scala version 2.13.17, OpenJDK 64-Bit Server VM, 17.0.18
+Branch HEAD
+Compiled by user runner on 2025-12-11T14:03:23Z
+Revision e221b56be7b6d9e48e107fc4d1cf0c15f02700f8
+Url https://github.com/apache/spark
+Type --help for more information.
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/airflow-stack
+$ docker exec airflow-stack-airflow-apiserver spark-submit --version | grep version
+Error response from daemon: No such container: airflow-stack-airflow-apiserver
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/airflow-stack
+$ docker exec airflow-stack-airflow-apiserver-1 spark-submit --version | grep version
+WARNING: Using incubator modules: jdk.incubator.vector
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /___/ .__/\_,_/_/ /_/\_\   version 4.1.0
+      /_/
+
+Using Scala version 2.13.17, OpenJDK 64-Bit Server VM, 17.0.18
+Branch HEAD
+Compiled by user runner on 2025-12-11T14:03:23Z
+Revision e221b56be7b6d9e48e107fc4d1cf0c15f02700f8
+Url https://github.com/apache/spark
+Type --help for more information.
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/airflow-stack
+$ docker exec airflow-stack-airflow-scheduler-1 spark-submit --version | grep version
+WARNING: Using incubator modules: jdk.incubator.vector
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /___/ .__/\_,_/_/ /_/\_\   version 4.1.0
+      /_/
+
+Using Scala version 2.13.17, OpenJDK 64-Bit Server VM, 17.0.18
+Branch HEAD
+Compiled by user runner on 2025-12-11T14:03:23Z
+Revision e221b56be7b6d9e48e107fc4d1cf0c15f02700f8
+Url https://github.com/apache/spark
+Type --help for more information.
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/airflow-stack
+$ docker exec -it airflow-stack-airflow-apiserver-1 bash -c "python -c \"import sys; print('Python version:', sys.version)\""
+Python version: 3.12.12 (main, Jan 13 2026, 09:45:04) [GCC 12.2.0]
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker
+ debug airflow-stack-airflow-apiserver-1
+    Learn more at https://docs.docker.com/go/debug-cli/
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/airflow-stack
+$ docker exec -it airflow-stack-airflow-scheduler-1 bash -c "python -c \"import sys; print('Python version:', sys.version)\""
+Python version: 3.12.12 (main, Jan 13 2026, 09:45:04) [GCC 12.2.0]
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker
+ debug airflow-stack-airflow-scheduler-1
+    Learn more at https://docs.docker.com/go/debug-cli/
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/airflow-stack
+$ docker exec -it airflow-stack-airflow-worker-1 bash -c "python -c \"import sys; print('Python version:', sys.version)\""
+Python version: 3.12.12 (main, Jan 13 2026, 09:45:04) [GCC 12.2.0]
+
+What's next:
+    Try Docker Debug for seamless, persistent debugging tools in any container or image → docker
+ debug airflow-stack-airflow-worker-1
+    Learn more at https://docs.docker.com/go/debug-cli/
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/airflow-stack
+
+--------------------------------------------------------------
+
+spark:
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/spark-stack
+$ docker compose exec spark-worker bash -lc "/usr/bin/python3.12 -m pip show pyspark || echo 'pyspark not installed'"
+WARNING: The directory '/nonexistent/.cache/pip' or its parent directory is not owned or is not
+writable by the current user. The cache has been disabled. Check the permissions and owner of th
+at directory. If executing pip with sudo, you should use sudo's -H flag.
+Name: pyspark
+Version: 4.1.0
+Summary: Apache Spark Python API
+Home-page: https://github.com/apache/spark/tree/master/python
+Author: Spark Developers
+Author-email: dev@spark.apache.org
+License: Apache-2.0
+Location: /usr/local/lib/python3.12/dist-packages
+Requires: py4j
+Required-by:
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/spark-stack
+$ docker compose exec spark-worker bash -lc "/usr/bin/python3.12 -c \"import pyspark; print('pyspark', pyspark.__version__)\""
+pyspark 4.1.0
+
+$ docker exec -it spark-worker bash -c "python -c \"import sys; print('Python version:', sys.version)\""
+Python version: 3.12.12 (main, Oct 10 2025, 08:52:57) [GCC 11.4.0]
+
+$ docker exec -it spark-master bash -c "python -c \"import sys; print('Python version:', sys.version)\""
+Python version: 3.12.12 (main, Oct 10 2025, 08:52:57) [GCC 11.4.0]
+
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/spark-stack
+$ docker compose exec spark-master bash -lc "/usr/bin/python3.12 -c \"import pyspark; print('pyspark', pyspark.__version__)\""
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'pyspark'
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/spark-stack
+
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/spark-stack
+$ docker exec spark-worker bash -c "which python3.12"
+/usr/bin/python3.12
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/spark-stack
+$ docker exec spark-worker bash -c "which python3.12 || which python3 || which python"
+/usr/bin/python3.12
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/spark-stack
+$ docker exec spark-worker bash -c "ls -la /usr/bin/python*"
+lrwxrwxrwx 1 root root      24 Feb  2 08:30 /usr/bin/python -> /etc/alternatives/python
+lrwxrwxrwx 1 root root      10 Aug  8  2024 /usr/bin/python3 -> python3.10
+-rwxr-xr-x 1 root root 5933576 Nov  4 08:48 /usr/bin/python3.10
+lrwxrwxrwx 1 root root      34 Nov  4 08:48 /usr/bin/python3.10-config -> x86_64-linux-gnu-pytho
+n3.10-config
+-rwxr-xr-x 1 root root 7914288 Oct 10 08:52 /usr/bin/python3.12
+lrwxrwxrwx 1 root root      34 Oct 10 08:52 /usr/bin/python3.12-config -> x86_64-linux-gnu-pytho
+n3.12-config
+lrwxrwxrwx 1 root root      17 Aug  8  2024 /usr/bin/python3-config -> python3.10-config
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/spark-stack
+$ docker exec spark-worker bash -c "ls -la /home/airflow/.local/bin/ || echo 'No airflow user directory'"
+ls: cannot access '/home/airflow/.local/bin/': No such file or directory
+No airflow user directory
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/spark-stack
+$ docker exec spark-worker bash -c "python -c 'import pyspark; print(\"PySpark available\")'"
+PySpark available
+
+Samir@DESKTOP-HT2J7UQ MINGW64 ~/DWH/spark-stack
+$
