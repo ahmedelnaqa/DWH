@@ -4,3 +4,5 @@ Test CDC using:
 - schema-registry
 - zookeeper
 - akhq
+- Flink
+- FlinkCDC
