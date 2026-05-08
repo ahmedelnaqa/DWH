@@ -1,0 +1,219 @@
+version: '3.8'
+
+services:
+  # ZooKeeper
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.8.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - cdc-network
+
+  # Kafka Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.8.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      # Performance optimizations
+      KAFKA_NUM_NETWORK_THREADS: 8
+      KAFKA_NUM_IO_THREADS: 16
+      KAFKA_SOCKET_SEND_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: 104857600
+    networks:
+      - cdc-network
+
+  # ── NEW: Confluent Schema Registry ──────────────────────────────────────────
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.8.0   # same version as Kafka
+    depends_on:
+      - kafka
+    ports:
+      - "8085:8081"                                 # host:container (8081 kept internally)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: _schemas
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: 1
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      # Compatibility mode — FULL is safest for CDC (allows add/remove optional fields)
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: FULL
+    networks:
+      - cdc-network
+  # ────────────────────────────────────────────────────────────────────────────
+
+  # Kafka Connect with Debezium
+  # NOTE: the official Debezium image does NOT ship Confluent Avro converters.
+  # We use a custom build (see comment below) or add the JARs via volume.
+  # Easiest: use the confluentinc/cp-kafka-connect image which has Avro built-in,
+  # and add Debezium connector JARs on top — OR mount the Avro converter JARs.
+  connect:
+    image: quay.io/debezium/connect:3.2
+    depends_on:
+      - kafka
+      - schema-registry                             # ← added dependency
+    ports:
+      - "8083:8083"
+    # ── Volume to inject Confluent Avro converter JARs into Debezium ──────────
+    # Download these JARs and place them in ./connect-plugins/:
+    #   confluent-kafka-connect-avro-converter-<version>.jar
+    #   kafka-avro-serializer-<version>.jar
+    #   kafka-schema-registry-client-<version>.jar
+    #   common-config-<version>.jar
+    #   common-utils-<version>.jar
+    # Get them from: https://packages.confluent.io/maven/io/confluent/
+    volumes:
+      - ./connect-plugins:/kafka/connect/connect-plugins
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      # ── Use Avro converters (requires JARs mounted above) ──────────────────
+      KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KEY_CONVERTER_SCHEMAS_ENABLE: "true"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "true"
+      # Plugin path so Connect picks up the mounted JARs
+      CONNECT_PLUGIN_PATH: "/kafka/connect,/kafka/connect/connect-plugins"
+      # Offset flush
+      CONNECT_OFFSET_FLUSH_INTERVAL_MS: 10000
+      CONNECT_OFFSET_FLUSH_TIMEOUT_MS: 5000
+    networks:
+      - cdc-network
+
+  # Target PostgreSQL
+  postgres-target:
+    image: postgres:18
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: target_db
+    volumes:
+      - postgres-target-data:/var/lib/postgresql/
+    networks:
+      - cdc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Flink JobManager
+  flink-jobmanager:
+    image: flink:1.20.0-scala_2.12
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    volumes:
+      - ./flink-cdc-libs:/opt/flink/extra-jars
+      - flink-checkpoints:/tmp/flink-checkpoints
+    environment:
+      - FLINK_CLASSPATH=/opt/flink/extra-jars/*
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.memory.process.size: 2048m
+        taskmanager.memory.process.size: 2048m
+        execution.checkpointing.interval: 3000
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+    networks:
+      - cdc-network
+    depends_on:
+      - kafka
+      - postgres-target
+
+  flink-taskmanager:
+    image: flink:1.20.0-scala_2.12
+    command: taskmanager
+    volumes:
+      - ./flink-cdc-libs:/opt/flink/extra-jars
+      - flink-checkpoints:/tmp/flink-checkpoints
+    environment:
+      - FLINK_CLASSPATH=/opt/flink/extra-jars/*
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 2048m
+    networks:
+      - cdc-network
+    depends_on:
+      - flink-jobmanager
+    deploy:
+      replicas: 2
+
+  flink-sql-client:
+    image: flink:1.20.0-scala_2.12
+    command: sleep infinity
+    volumes:
+      - ./flink-cdc-libs:/opt/flink/extra-jars
+      - ./sql:/opt/flink/sql
+      - ./conf/sql-client.yaml:/opt/flink/conf/sql-client.yaml
+    environment:
+      - FLINK_CLASSPATH=/opt/flink/extra-jars/*
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        rest.address: flink-jobmanager
+    networks:
+      - cdc-network
+    stdin_open: true
+    tty: true
+    depends_on:
+      - flink-jobmanager
+
+  # AKHQ (Kafka UI)
+  akhq:
+    image: tchiotludo/akhq:latest
+    container_name: akhq2
+    depends_on:
+      - kafka
+      - schema-registry                             # ← added so AKHQ shows schemas
+    ports:
+      - "8082:8080"
+    environment:
+      AKHQ_CONFIGURATION: |
+        akhq:
+          connections:
+            kafka:
+              properties:
+                bootstrap.servers: kafka:9092
+              schema-registry:                      # ← added Schema Registry to AKHQ
+                url: http://schema-registry:8081
+    networks:
+      - cdc-network
+
+networks:
+  cdc-network:
+    driver: bridge
+
+volumes:
+  postgres-target-data:
+  flink-checkpoints:

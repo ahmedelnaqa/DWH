@@ -1,0 +1,25 @@
+{
+    "name": "postgres-connector",
+    "config": {
+        "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+        "database.hostname": "10.89.2.2",
+        "database.port": "5432",
+        "database.user": "learner",
+        "database.password": "secret",
+        "database.dbname": "learning_db",
+        "topic.prefix": "cdc",
+        "table.include.list": "public.products",
+        "plugin.name": "pgoutput",
+        "publication.autocreate.mode": "filtered",
+        "slot.name": "debezium_slot",
+        "poll.interval.ms": "2000",
+        "max.batch.size": "10000",
+        "max.queue.size": "30000",
+        "heartbeat.interval.ms": "5000",
+        "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "key.converter.schemas.enable": "false",
+        "value.converter.schemas.enable": "false",
+        "decimal.handling.mode": "string"
+    }
+}

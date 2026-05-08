@@ -1,0 +1,76 @@
+
+------------------------------------------------------
+curl -X POST http://localhost:8083/connectors   -H "Content-Type: application/json"   -d @JsonConnectors/debezium-config.json
+
+curl http://localhost:8083/connectors/postgres-connector/status
+
+------------------------------------------------------
+CREATE TABLE products_source (
+    id INT,
+    name STRING,
+    description STRING,
+    price DECIMAL(10,2),
+    created_at TIMESTAMP(3),
+    PRIMARY KEY (id) NOT ENFORCED
+) WITH (
+    'connector' = 'kafka',
+    'topic' = 'cdc.public.products',
+    'properties.bootstrap.servers' = 'kafka:9092',
+    'properties.group.id' = 'flink-consumer',
+    'scan.startup.mode' = 'earliest-offset',
+    'value.format' = 'debezium-json'
+);
+
+
+CREATE TABLE products_source (
+    id INT,
+    name STRING,
+    description STRING,
+    price DECIMAL(10,2),
+    created_at BIGINT,
+    PRIMARY KEY (id) NOT ENFORCED
+) WITH (
+    'connector' = 'kafka',
+    'topic' = 'cdc.public.products',
+    'properties.bootstrap.servers' = 'kafka:9092',
+    'properties.group.id' = 'flink-consumer',
+    'scan.startup.mode' = 'earliest-offset',
+    'value.format' = 'debezium-json'
+);
+
+
+-------------------------------------------------------
+CREATE TABLE products_sink (
+    id INT,
+    name STRING,
+    description STRING,
+    price DECIMAL(10,2),
+    created_at TIMESTAMP(3),
+    PRIMARY KEY (id) NOT ENFORCED
+) WITH (
+    'connector' = 'jdbc',
+    'url' = 'jdbc:postgresql://postgres-target:5432/target_db',
+    'table-name' = 'products',
+    'username' = 'postgres',
+    'password' = 'postgres',
+    'sink.buffer-flush.max-rows' = '1000',
+    'sink.buffer-flush.interval' = '2s'
+);
+
+ADD JAR '/opt/flink/extra-jars/postgresql-42.7.4.jar';
+ADD JAR '/opt/flink/extra-jars/flink-sql-connector-kafka-3.4.0-1.20.jar';
+ADD JAR '/opt/flink/extra-jars/flink-connector-jdbc-3.3.0-1.20.jar';
+
+
+INSERT INTO products_sink
+SELECT * FROM products_source;
+
+
+INSERT INTO products_sink
+SELECT 
+    id,
+    name,
+    description,
+    price,
+    TO_TIMESTAMP(FROM_UNIXTIME(created_at / 1000000)) AS created_at
+FROM products_source;

@@ -1,0 +1,200 @@
+version: '3.8'
+
+services:
+  # ZooKeeper
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.8.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - cdc-network
+
+  # Kafka Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.8.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      # Performance optimizations
+      KAFKA_NUM_NETWORK_THREADS: 8
+      KAFKA_NUM_IO_THREADS: 16
+      KAFKA_SOCKET_SEND_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: 104857600
+    networks:
+      - cdc-network
+
+  # Kafka Connect with Debezium
+  connect:
+    image: quay.io/debezium/connect:3.2
+    depends_on:
+      - kafka
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    networks:
+      - cdc-network
+
+  # # Source PostgreSQL
+  # postgres-source:
+    # image: postgres:18
+    # ports:
+      # - "5432:5432"
+    # environment:
+      # POSTGRES_USER: postgres
+      # POSTGRES_PASSWORD: postgres
+      # POSTGRES_DB: source_db
+    # command:
+      # - "postgres"
+      # - "-c"
+      # - "wal_level=logical"
+      # - "-c"
+      # - "max_wal_senders=10"
+      # - "-c"
+      # - "max_replication_slots=10"
+      # - "-c"
+      # - "logical_decoding_work_mem=128MB"
+    # volumes:
+      # - ./init-source.sql:/docker-entrypoint-initdb.d/init.sql
+      # - postgres-source-data:/var/lib/postgresql/data   # Fixed path
+    # networks:
+      # - cdc-network
+    # healthcheck:
+      # test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # interval: 10s
+      # timeout: 5s
+      # retries: 5
+
+  # Target PostgreSQL
+  postgres-target:
+    image: postgres:18
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: target_db
+    volumes:
+      - postgres-target-data:/var/lib/postgresql/   # Fixed path
+    networks:
+      - cdc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Flink JobManager
+  flink-jobmanager:
+    image: flink:1.20.0-scala_2.12
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    volumes:
+      - ./flink-cdc-libs:/opt/flink/extra-jars
+      - flink-checkpoints:/tmp/flink-checkpoints
+    environment:
+      - FLINK_CLASSPATH=/opt/flink/extra-jars/*
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.memory.process.size: 2048m
+        taskmanager.memory.process.size: 2048m
+        execution.checkpointing.interval: 3000
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+    networks:
+      - cdc-network
+    depends_on:
+      - kafka
+      - postgres-target
+
+  flink-taskmanager:
+    image: flink:1.20.0-scala_2.12
+    command: taskmanager
+    volumes:
+      - ./flink-cdc-libs:/opt/flink/extra-jars
+      - flink-checkpoints:/tmp/flink-checkpoints
+    environment:
+      - FLINK_CLASSPATH=/opt/flink/extra-jars/*
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 2048m
+    networks:
+      - cdc-network
+    depends_on:
+      - flink-jobmanager
+    deploy:
+      replicas: 2
+
+  flink-sql-client:
+    image: flink:1.20.0-scala_2.12
+    command: sleep infinity   # keep it alive, then exec in to run ./bin/sql-client.sh /code/ podman exec -it dib_kafka_flinkcdc_flink-sql-client_1 sh
+    volumes:
+      - ./flink-cdc-libs:/opt/flink/extra-jars
+      - ./sql:/opt/flink/sql
+      - ./conf/sql-client.yaml:/opt/flink/conf/sql-client.yaml
+    environment:
+      - FLINK_CLASSPATH=/opt/flink/extra-jars/*
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        rest.address: flink-jobmanager
+    networks:
+      - cdc-network
+    stdin_open: true
+    tty: true
+    depends_on:
+      - flink-jobmanager
+
+  # AKHQ (Kafka UI)
+  akhq:
+    image: tchiotludo/akhq:latest
+    container_name: akhq2
+    depends_on:
+      - kafka
+    ports:
+      - "8082:8080"
+    environment:
+      AKHQ_CONFIGURATION: |
+        akhq:
+          connections:
+            kafka:
+              properties:
+                bootstrap.servers: kafka:9092
+    networks:
+      - cdc-network
+
+networks:
+  cdc-network:
+    driver: bridge
+
+volumes:
+  # postgres-source-data:
+  postgres-target-data:
+  flink-checkpoints:

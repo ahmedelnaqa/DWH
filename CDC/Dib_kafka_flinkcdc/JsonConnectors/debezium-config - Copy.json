@@ -1,0 +1,30 @@
+{
+    "name": "postgres-connector",
+    "config": {
+        "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+        "database.hostname": "postgres-source",
+        "database.port": "5432",
+        "database.user": "postgres",
+        "database.password": "postgres",
+        "database.dbname": "source_db",
+        "topic.prefix": "cdc",
+        "table.include.list": "public.products",
+        
+        // PERFORMANCE FIX: Use pgoutput instead of default decoderbufs[citation:2][citation:6]
+        "plugin.name": "pgoutput",
+        "publication.autocreate.mode": "filtered",
+        "slot.name": "debezium_slot",
+        
+        // BATCHING OPTIMIZATIONS: Process more records per cycle
+        "poll.interval.ms": "2000",      // Poll every 2 seconds
+        "max.batch.size": "10000",       // Take up to 10k records per batch
+        "max.queue.size": "30000",       // Larger internal queue for bursts
+        "heartbeat.interval.ms": "5000", // Keep connection alive
+        
+        // Use simple JSON to reduce overhead (consider Avro for production)
+        "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "key.converter.schemas.enable": "false",
+        "value.converter.schemas.enable": "false"
+    }
+}
