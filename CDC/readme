@@ -1,0 +1,6 @@
+Test CDC using:
+- debezium
+- kafka
+- schema-registry
+- zookeeper
+- akhq
